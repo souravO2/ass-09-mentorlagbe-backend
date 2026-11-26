@@ -59,6 +59,21 @@ app.get("/tuitions", async (req, res) => {
   res.send(result);
 });
 
+app.patch("/tuitions/:id", async (req, res) => {
+  const id = req.params.id;
+  const data = req.body;
+  const filter = { _id: new ObjectId(id) };
+  const updateDoc = {
+    $set: {
+      ...data,
+    },
+  };
+  const result = await tuitions.updateOne(filter, updateDoc);
+  res.send(result);
+});
+
+
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
