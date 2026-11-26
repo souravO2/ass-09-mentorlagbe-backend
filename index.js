@@ -47,7 +47,17 @@ app.post("/tuitions", async (req, res) => {
   res.send(result);
 });
 
-
+app.get("/tuitions", async (req, res) => {
+  const query = {};
+  if (req.query) {
+    if (req.query.tutorId) {
+      query.tutorId = req.query.tutorId;
+    }
+  }
+  const cursor = tuitions.find(query);
+  const result = await cursor.toArray();
+  res.send(result);
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
