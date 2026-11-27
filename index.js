@@ -131,6 +131,38 @@ app.get("/tuitions/:id", async (req, res) => {
   res.send(tuition);
 });
 
+// application routes
+app.post("/applications", async (req, res) => {
+  const data = await req.body;
+  const application = {
+    ...data,
+    appliedAt: new Date(),
+  };
+  const result = await applications.insertOne(application);
+  res.send(result);
+});
+
+// Has this student applied already?
+app.get("/applications/exists/:tuitionId", async (req, res) => {
+  console.log(
+    "Checking application existence for tuitionId:",
+    req.params.tuitionId,
+    "and studentId:",
+    req.user.id,
+  );
+  try {
+    const found = await applications.findOne({
+      tuitionId: req.params.tuitionId,
+
+      // TODO: have to get the studentId from middleware that authenticates the user and sets req.user.id
+      studentId: req.user.id, // Assuming req.user.id is set by some authentication middleware
+    });
+    res.send({ applied: Boolean(found) });
+  } catch (error) {
+    res.status(500).send({ message: "Failed to check the application" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
