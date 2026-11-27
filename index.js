@@ -142,27 +142,6 @@ app.post("/applications", async (req, res) => {
   res.send(result);
 });
 
-// Has this student applied already?
-app.get("/applications/exists/:tuitionId", async (req, res) => {
-  console.log(
-    "Checking application existence for tuitionId:",
-    req.params.tuitionId,
-    "and studentId:",
-    req.user.id,
-  );
-  try {
-    const found = await applications.findOne({
-      tuitionId: req.params.tuitionId,
-
-      // TODO: have to get the studentId from middleware that authenticates the user and sets req.user.id
-      studentId: req.user.id, // Assuming req.user.id is set by some authentication middleware
-    });
-    res.send({ applied: Boolean(found) });
-  } catch (error) {
-    res.status(500).send({ message: "Failed to check the application" });
-  }
-});
-
 app.get("/applications", async (req, res) => {
   const query = {};
   if (req.query.tutorId) {
@@ -170,6 +149,16 @@ app.get("/applications", async (req, res) => {
   }
   if (req.query.studentId) {
     query.studentId = req.query.studentId;
+  }
+  if (req.query.tuitionId) {
+    query.tuitionId = req.query.tuitionId;
+  }
+  if (req.query.studentId && req.query.tuitionId) {
+    const found = await applications.findOne(query);
+
+    return res.send({
+      applied: Boolean(found),
+    });
   }
   const cursor = applications.find(query).sort({ appliedAt: -1 });
   const result = await cursor.toArray();
