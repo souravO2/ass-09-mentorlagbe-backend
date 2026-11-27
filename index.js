@@ -324,6 +324,52 @@ app.get("/admin/stats", async (req, res) => {
   }
 });
 
+app.get("/users", async (req, res) => {
+  try {
+    const result = await users.find({}).sort({ createdAt: -1 }).toArray();
+
+    const allUsers = result.map((user) => ({
+      ...user,
+      _id: user._id.toString(),
+      createdAt: user.createdAt?.toISOString() ?? null,
+    }));
+
+    res.send(allUsers);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to fetch users" });
+  }
+});
+
+app.patch("/users/:id", async (req, res) => {
+  try {
+    const { role } = req.body;
+    const { id } = req.params;
+
+    if (!["student", "tutor", "admin"].includes(role)) {
+      return res.status(400).send({ message: "Invalid role" });
+    }
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid user ID" });
+    }
+
+    const result = await users.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role } },
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    res.send({ message: "Role updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to update role" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
