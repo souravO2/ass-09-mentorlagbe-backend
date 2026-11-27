@@ -102,6 +102,23 @@ app.get("/tuitions", async (req, res) => {
   }
 });
 
+app.get("/tuitions/fresh", async (req, res) => {
+  try {
+    const freshTuitions = await tuitions
+      .find({ approvalStatus: "approved", isActive: true })
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .toArray();
+
+    res.send(freshTuitions);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to load fresh tuitions",
+    });
+  }
+});
+
 app.get("/tuitions/all", async (req, res) => {
   try {
     // TODO: Verify the logged-in user is an admin here.
@@ -204,6 +221,65 @@ app.patch("/applications/:id", async (req, res) => {
 });
 
 // user routes
+app.get("/admin/stats", async (req, res) => {
+  try {
+    // TODO: Verify the logged-in user is an admin
+
+    const [
+      totalUsers,
+      totalTutors,
+      pendingTuitions,
+      approvedTuitions,
+      // revenueResult,
+    ] = await Promise.all([
+      users.countDocuments(),
+
+      users.countDocuments({
+        role: "tutor",
+      }),
+
+      tuitions.countDocuments({
+        approvalStatus: "pending",
+      }),
+
+      tuitions.countDocuments({
+        approvalStatus: "approved",
+      }),
+
+      // payments
+      //   .aggregate([
+      //     {
+      //       $match: {
+      //         status: "paid",
+      //       },
+      //     },
+      //     {
+      //       $group: {
+      //         _id: null,
+      //         total: { $sum: "$amount" },
+      //       },
+      //     },
+      //   ])
+      //   .toArray(),
+    ]);
+
+    const data = {
+      users: totalUsers,
+      tutors: totalTutors,
+      pending: pendingTuitions,
+      approved: approvedTuitions,
+      // revenue: revenueResult[0]?.total ?? 0,
+    };
+
+    res.send(data);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      message: "Failed to load admin statistics",
+    });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
