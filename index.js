@@ -102,6 +102,24 @@ app.get("/tuitions", async (req, res) => {
   }
 });
 
+app.get("/tuitions/all", async (req, res) => {
+  try {
+    // TODO: Verify the logged-in user is an admin here.
+
+    const allTuitions = await tuitions
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(allTuitions);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to load all tuitions",
+    });
+  }
+});
+
 app.patch("/tuitions/:id", async (req, res) => {
   const id = req.params.id;
   const data = req.body;
@@ -184,6 +202,8 @@ app.patch("/applications/:id", async (req, res) => {
   const result = await applications.updateOne(filter, updateDoc);
   res.send(result);
 });
+
+// user routes
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
