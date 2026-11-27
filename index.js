@@ -119,6 +119,49 @@ app.get("/tuitions/fresh", async (req, res) => {
   }
 });
 
+app.get("/top-subjects", async (req, res) => {
+  try {
+    const topSubjects = await tuitions
+      .aggregate([
+        {
+          $match: {
+            approvalStatus: "approved",
+            isActive: true,
+          },
+        },
+        {
+          $group: {
+            _id: "$subject",
+            tuitionCount: { $sum: 1 },
+            createdAt: { $max: "$createdAt" },
+          },
+        },
+        {
+          $sort: {
+            tuitionCount: -1,
+            createdAt: -1, // Sort by createdAt in descending order for tie-breaking
+          },
+        },
+        { $limit: 4 },
+        {
+          $project: {
+            _id: 0,
+            subject: "$_id",
+            tuitionCount: 1,
+          },
+        },
+      ])
+      .toArray();
+
+    res.send(topSubjects);
+  } catch (error) {
+    console.error("Failed to fetch top subjects:", error);
+    res.status(500).send({
+      message: "Failed to fetch top subjects",
+    });
+  }
+});
+
 app.get("/tuitions/all", async (req, res) => {
   try {
     // TODO: Verify the logged-in user is an admin here.
