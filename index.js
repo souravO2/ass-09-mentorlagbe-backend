@@ -122,6 +122,15 @@ app.delete("/tuitions/:id", async (req, res) => {
   res.send(result);
 });
 
+app.get("/tuitions/:id", async (req, res) => {
+  const { id } = req.params;
+  const tuition = await tuitions.findOne({ _id: new ObjectId(id) });
+  if (!tuition) {
+    return res.status(404).send({ message: "Tuition not found" });
+  }
+  res.send(tuition);
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
