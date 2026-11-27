@@ -47,16 +47,59 @@ app.post("/tuitions", async (req, res) => {
   res.send(result);
 });
 
+const PAGE_SIZE = 10; // keep in sync with PAGE_SIZE in lib/tuition-query.ts
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 app.get("/tuitions", async (req, res) => {
-  const query = {};
-  if (req.query) {
-    if (req.query.tutorId) {
-      query.tutorId = req.query.tutorId;
+  try {
+    const { tutorId, search, subject, classLevel, mode } = req.query;
+
+    // Tutor's own tuitions: plain array
+    if (typeof tutorId === "string" && tutorId) {
+      const own = await tuitions
+        .find({ tutorId })
+        .sort({ createdAt: -1 })
+        .toArray();
+      return res.send(own);
     }
+
+    // Public browse: only approved and active tuitions
+    const query = { approvalStatus: "approved", isActive: true };
+
+    if (typeof subject === "string" && subject) query.subject = subject;
+    if (typeof classLevel === "string" && classLevel)
+      query.classLevel = classLevel;
+    if (mode === "Online" || mode === "Offline") query.mode = mode;
+
+    const term = typeof search === "string" ? search.trim().slice(0, 100) : "";
+    if (term) {
+      const pattern = new RegExp(escapeRegex(term), "i");
+      query.$or = [{ title: pattern }, { subject: pattern }];
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+    const [result, total] = await Promise.all([
+      tuitions
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+        .toArray(),
+      tuitions.countDocuments(query),
+    ]);
+
+    res.send({
+      tuitions: result,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to load tuitions" });
   }
-  const cursor = tuitions.find(query);
-  const result = await cursor.toArray();
-  res.send(result);
 });
 
 app.patch("/tuitions/:id", async (req, res) => {
