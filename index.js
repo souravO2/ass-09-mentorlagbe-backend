@@ -163,6 +163,26 @@ app.get("/applications/exists/:tuitionId", async (req, res) => {
   }
 });
 
+app.get("/applications", async (req, res) => {
+  const query = {};
+  if (req.query.tutorId) {
+    query.tutorId = req.query.tutorId;
+  }
+  if (req.query.studentId) {
+    query.studentId = req.query.studentId;
+  }
+  const cursor = applications.find(query).sort({ appliedAt: -1 });
+  const result = await cursor.toArray();
+  res.send(result);
+});
+
+app.delete("/applications/:id", async (req, res) => {
+  const id = req.params.id;
+  const filter = { _id: new ObjectId(id) };
+  const result = await applications.deleteOne(filter);
+  res.send(result);
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
