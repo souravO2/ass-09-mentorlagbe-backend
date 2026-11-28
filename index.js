@@ -3,6 +3,9 @@ import cors from "cors";
 import "dotenv/config";
 import { MongoClient } from "mongodb";
 import { ObjectId } from "mongodb";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +32,7 @@ const users = db.collection("user");
 const sessions = db.collection("session");
 const tuitions = db.collection("tuitions");
 const applications = db.collection("applications");
+const payments = db.collection("payments");
 
 app.get("/", (req, res) => {
   res.send("Hello from MentorLagbe server!");
@@ -232,10 +236,23 @@ app.get("/applications", async (req, res) => {
     query.tuitionId = req.query.tuitionId;
   }
   if (req.query.studentId && req.query.tuitionId) {
-    const found = await applications.findOne(query);
+    const { studentId, tuitionId } = req.query;
+    const [found, count] = await Promise.all([
+      // Check if already applied to this tuition
+      applications.findOne({
+        studentId,
+        tuitionId,
+      }),
+
+      // Count all applications by this student
+      applications.countDocuments({
+        studentId,
+      }),
+    ]);
 
     return res.send({
       applied: Boolean(found),
+      count,
     });
   }
   const cursor = applications.find(query).sort({ appliedAt: -1 });
@@ -273,7 +290,7 @@ app.get("/admin/stats", async (req, res) => {
       totalTutors,
       pendingTuitions,
       approvedTuitions,
-      // revenueResult,
+      revenueResult,
     ] = await Promise.all([
       users.countDocuments(),
 
@@ -289,21 +306,21 @@ app.get("/admin/stats", async (req, res) => {
         approvalStatus: "approved",
       }),
 
-      // payments
-      //   .aggregate([
-      //     {
-      //       $match: {
-      //         status: "paid",
-      //       },
-      //     },
-      //     {
-      //       $group: {
-      //         _id: null,
-      //         total: { $sum: "$amount" },
-      //       },
-      //     },
-      //   ])
-      //   .toArray(),
+      payments
+        .aggregate([
+          {
+            $match: {
+              payment_status: "paid",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$amount" },
+            },
+          },
+        ])
+        .toArray(),
     ]);
 
     const data = {
@@ -311,7 +328,7 @@ app.get("/admin/stats", async (req, res) => {
       tutors: totalTutors,
       pending: pendingTuitions,
       approved: approvedTuitions,
-      // revenue: revenueResult[0]?.total ?? 0,
+      revenue: revenueResult[0]?.total ?? 0,
     };
 
     res.send(data);
@@ -367,6 +384,67 @@ app.patch("/users/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "Failed to update role" });
+  }
+});
+
+// payment routes
+app.post("/payments/checkout-verify", async (req, res) => {
+  const { sessionId } = req.body;
+  const { status, payment_status, customer_email, metadata, payment_intent } =
+    await stripe.checkout.sessions.retrieve(sessionId);
+
+  // check is new payment or not
+  // check if the sessionId for the currently logged in user
+  //insert sessionId into payments collection
+  // update user info as premium user
+  if (status === "complete" && payment_status === "paid") {
+    const sessionQuery = { sessionId };
+    const existingPayment = await payments.findOne(sessionQuery);
+    if (existingPayment) {
+      return res.send({ success: false, message: "Payment already verified" });
+    }
+
+    const payment = {
+      sessionId,
+      status,
+      payment_status,
+      customer_email,
+      customer_name: metadata.customerName,
+      customer_role: metadata.role,
+      planName: metadata.planName,
+      amount: Number(metadata.amount),
+      currency: metadata.currency,
+      userId: metadata.userId,
+      payment_intent,
+      paymentDate: new Date(),
+    };
+    const result = await payments.insertOne(payment);
+
+    // update the user table
+    const query = { _id: new ObjectId(metadata.userId) };
+
+    const updatedDoc = {
+      $set: {
+        plan: "pro",
+      },
+    };
+    const updateResult = await users.updateOne(query, updatedDoc);
+    res.send({ success: true, result, updateResult });
+    return;
+  }
+  res.send({ success: false, message: "Payment not verified" });
+});
+
+app.get("/payments", async (req, res) => {
+  try {
+    const result = await payments
+      .find({ payment_status: "paid" })
+      .sort({ paymentDate: -1 })
+      .toArray();
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to load transactions" });
   }
 });
 
