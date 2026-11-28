@@ -34,12 +34,56 @@ const tuitions = db.collection("tuitions");
 const applications = db.collection("applications");
 const payments = db.collection("payments");
 
+const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  const query = { token };
+  const session = await sessions.findOne(query);
+  if (!session) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  const userId = session.userId;
+  const user = await users.findOne({ _id: new ObjectId(userId) });
+  if (!user) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  req.user = user;
+  next();
+};
+
+const verifyStudent = async (req, res, next) => {
+  if (req.user.role !== "student") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
+
+const verifyTutor = async (req, res, next) => {
+  if (req.user.role !== "tutor") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
+
+const verifyAdmin = async (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
+
 app.get("/", (req, res) => {
   res.send("Hello from MentorLagbe server!");
 });
 
 //tuitions routes
-app.post("/tuitions", async (req, res) => {
+app.post("/tuitions", verifyToken, verifyTutor, async (req, res) => {
   const data = await req.body;
   const tuition = {
     ...data,
@@ -166,9 +210,9 @@ app.get("/top-subjects", async (req, res) => {
   }
 });
 
-app.get("/tuitions/all", async (req, res) => {
+app.get("/tuitions/all", verifyToken, verifyAdmin, async (req, res) => {
   try {
-    // TODO: Verify the logged-in user is an admin here.
+    // Fetch all tuitions for admin view
 
     const allTuitions = await tuitions
       .find({})
@@ -184,7 +228,7 @@ app.get("/tuitions/all", async (req, res) => {
   }
 });
 
-app.patch("/tuitions/:id", async (req, res) => {
+app.patch("/tuitions/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   const data = req.body;
   const filter = { _id: new ObjectId(id) };
@@ -197,14 +241,14 @@ app.patch("/tuitions/:id", async (req, res) => {
   res.send(result);
 });
 
-app.delete("/tuitions/:id", async (req, res) => {
+app.delete("/tuitions/:id", verifyToken, verifyTutor, async (req, res) => {
   const id = req.params.id;
   const filter = { _id: new ObjectId(id) };
   const result = await tuitions.deleteOne(filter);
   res.send(result);
 });
 
-app.get("/tuitions/:id", async (req, res) => {
+app.get("/tuitions/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
   const tuition = await tuitions.findOne({ _id: new ObjectId(id) });
   if (!tuition) {
@@ -214,7 +258,7 @@ app.get("/tuitions/:id", async (req, res) => {
 });
 
 // application routes
-app.post("/applications", async (req, res) => {
+app.post("/applications", verifyToken, verifyStudent, async (req, res) => {
   const data = await req.body;
   const application = {
     ...data,
@@ -224,7 +268,7 @@ app.post("/applications", async (req, res) => {
   res.send(result);
 });
 
-app.get("/applications", async (req, res) => {
+app.get("/applications", verifyToken, async (req, res) => {
   const query = {};
   if (req.query.tutorId) {
     query.tutorId = req.query.tutorId;
@@ -260,14 +304,19 @@ app.get("/applications", async (req, res) => {
   res.send(result);
 });
 
-app.delete("/applications/:id", async (req, res) => {
-  const id = req.params.id;
-  const filter = { _id: new ObjectId(id) };
-  const result = await applications.deleteOne(filter);
-  res.send(result);
-});
+app.delete(
+  "/applications/:id",
+  verifyToken,
+  verifyStudent,
+  async (req, res) => {
+    const id = req.params.id;
+    const filter = { _id: new ObjectId(id) };
+    const result = await applications.deleteOne(filter);
+    res.send(result);
+  },
+);
 
-app.patch("/applications/:id", async (req, res) => {
+app.patch("/applications/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   const data = req.body;
   const filter = { _id: new ObjectId(id) };
@@ -281,7 +330,7 @@ app.patch("/applications/:id", async (req, res) => {
 });
 
 // user routes
-app.get("/admin/stats", async (req, res) => {
+app.get("/admin/stats", verifyToken, verifyAdmin, async (req, res) => {
   try {
     // TODO: Verify the logged-in user is an admin
 
@@ -341,7 +390,7 @@ app.get("/admin/stats", async (req, res) => {
   }
 });
 
-app.get("/users", async (req, res) => {
+app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const result = await users.find({}).sort({ createdAt: -1 }).toArray();
 
@@ -358,7 +407,7 @@ app.get("/users", async (req, res) => {
   }
 });
 
-app.patch("/users/:id", async (req, res) => {
+app.patch("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { role } = req.body;
     const { id } = req.params;
@@ -388,7 +437,7 @@ app.patch("/users/:id", async (req, res) => {
 });
 
 // payment routes
-app.post("/payments/checkout-verify", async (req, res) => {
+app.post("/payments/checkout-verify", verifyToken, async (req, res) => {
   const { sessionId } = req.body;
   const { status, payment_status, customer_email, metadata, payment_intent } =
     await stripe.checkout.sessions.retrieve(sessionId);
@@ -435,7 +484,7 @@ app.post("/payments/checkout-verify", async (req, res) => {
   res.send({ success: false, message: "Payment not verified" });
 });
 
-app.get("/payments", async (req, res) => {
+app.get("/payments", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const result = await payments
       .find({ payment_status: "paid" })
